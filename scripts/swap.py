@@ -317,6 +317,8 @@ def main():
             if key.startswith('PRIVATE_KEY_') and env[key]:
                 wallets.append(env[key])
     
+    print(f"   🔐 Wallets found: {len(wallets)}")
+    
     if not wallets:
         print("❌ No wallet found!")
         print("\nUsage: python3 swap.py [options]")
