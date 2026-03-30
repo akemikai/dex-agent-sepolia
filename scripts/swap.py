@@ -30,6 +30,8 @@ RPC_URL = env.get('RPC_URL', 'https://sepolia.infura.io/v3/84842078b09946638c031
 CHAIN_ID = 11155111
 MAX_TX = int(env.get('MAX_TX', '1'))
 DELAY = int(env.get('DELAY', '30'))
+RETRY = int(env.get('RETRY', '3'))
+SCHEDULE = env.get('SCHEDULE', '')
 
 TOKENS = {
     "USDC": Web3.to_checksum_address("0x77ef087024F87976aAdA0Aa7F73BB8EAe6E9dda1"),
@@ -157,25 +159,41 @@ def swap_for_wallet(w3, private_key, from_token, to_token, amount_str, max_tx, d
             break
         
         try:
-            nonce = w3.eth.get_transaction_count(wallet_addr)
-            swap_tx = router.functions.swap(from_addr, to_addr, amount_wei, 0).build_transaction({
-                'from': wallet_addr, 'nonce': nonce, 'gas': 815109,
-                'gasPrice': 119571, 'chainId': CHAIN_ID
-            })
-            
-            signed = w3.eth.account.sign_transaction(swap_tx, private_key)
-            tx_hash = w3.eth.send_raw_transaction(signed.raw_transaction)
-            
-            receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
-            
-            if receipt.status == 1:
-                success_count += 1
-                total_gas += receipt.gasUsed
-                print(f"   ✅ Success! https://sepolia.etherscan.io/tx/{tx_hash.hex()}")
-            else:
-                fail_count += 1
-                print(f"   ❌ Failed!")
-                
+            # Retry logic
+            for attempt in range(1, RETRY + 1):
+                try:
+                    nonce = w3.eth.get_transaction_count(wallet_addr)
+                    swap_tx = router.functions.swap(from_addr, to_addr, amount_wei, 0).build_transaction({
+                        'from': wallet_addr, 'nonce': nonce, 'gas': 815109,
+                        'gasPrice': 119571, 'chainId': CHAIN_ID
+                    })
+                    
+                    signed = w3.eth.account.sign_transaction(swap_tx, private_key)
+                    tx_hash = w3.eth.send_raw_transaction(signed.raw_transaction)
+                    
+                    receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
+                    
+                    if receipt.status == 1:
+                        success_count += 1
+                        total_gas += receipt.gasUsed
+                        print(f"   ✅ Success! https://sepolia.etherscan.io/tx/{tx_hash.hex()}")
+                        break  # Success, exit retry loop
+                    else:
+                        if attempt < RETRY:
+                            print(f"   ⚠️ Failed, retrying ({attempt}/{RETRY})...")
+                            time.sleep(5)
+                        else:
+                            fail_count += 1
+                            print(f"   ❌ Failed after {RETRY} attempts!")
+                            
+                except Exception as inner_e:
+                    if attempt < RETRY:
+                        print(f"   ⚠️ Error: {str(inner_e)[:30]}, retrying...")
+                        time.sleep(5)
+                    else:
+                        fail_count += 1
+                        print(f"   ❌ Error after {RETRY} attempts: {str(inner_e)[:30]}")
+                        
         except Exception as e:
             fail_count += 1
             print(f"   ❌ Error: {str(e)[:40]}")
@@ -226,6 +244,67 @@ def main():
                 return
         else:
             i += 1
+    
+    # If SCHEDULE is set, run in scheduled mode
+    if SCHEDULE:
+        print(f"📅 Schedule mode: {SCHEDULE}")
+        print("Press Ctrl+C to stop\n")
+        
+        # Parse SCHEDULE - support hours like "2h" or minutes like "30m"
+        schedule_str = SCHEDULE.strip().lower()
+        
+        if schedule_str.endswith('h'):
+            interval_seconds = int(schedule_str[:-1]) * 3600
+            interval_display = f"{schedule_str[:-1]} hour(s)"
+        elif schedule_str.endswith('m'):
+            interval_seconds = int(schedule_str[:-1]) * 60
+            interval_display = f"{schedule_str[:-1]} minute(s)"
+        else:
+            # Assume hours if number
+            try:
+                interval_seconds = int(schedule_str) * 3600
+                interval_display = f"{schedule_str} hour(s)"
+            except:
+                interval_seconds = 7200  # Default 2 hours
+                interval_display = "2 hour(s) (default)"
+        
+        print(f"   Running every {interval_display}")
+        
+        from_token = "USDC"
+        to_token = "USDT"
+        amount_str = "60"
+        
+        run_count = 0
+        
+        while True:
+            run_count += 1
+            print("\n" + "="*50)
+            print(f"🕐 Scheduled run #{run_count}")
+            print("="*50)
+            
+            w3 = Web3(Web3.HTTPProvider(RPC_URL))
+            
+            wallets = []
+            if 'PRIVATE_KEY' in env:
+                wallets.append(env['PRIVATE_KEY'])
+            for key in env:
+                if key.startswith('PRIVATE_KEY_') and env[key]:
+                    wallets.append(env[key])
+            
+            total_success = 0
+            total_fail = 0
+            total_gas = 0
+            
+            for idx, wallet_pk in enumerate(wallets, 1):
+                success, fail, gas = swap_for_wallet(w3, wallet_pk, from_token, to_token, amount_str, MAX_TX, DELAY)
+                total_success += success
+                total_fail += fail
+                total_gas += gas
+            
+            print(f"\n📊 Run #{run_count} done: ✅{total_success} ❌{total_fail}")
+            print(f"   💤 Sleeping for {interval_display}...")
+            
+            time.sleep(interval_seconds)
     
     # Check wallets from env PRIVATE_KEY, PRIVATE_KEY_2, etc
     if not wallets:
