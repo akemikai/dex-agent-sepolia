@@ -81,9 +81,40 @@ def get_balances(address):
             pass
 
 
+def import_wallet(private_key):
+    """Import existing wallet via private key."""
+    try:
+        # Remove 0x prefix if present
+        if private_key.startswith("0x"):
+            private_key = private_key[2:]
+        
+        account = Account.from_key("0x" + private_key)
+        wallet_data = {
+            "address": account.address,
+            "private_key": account.key.hex(),
+            "note": "Imported wallet"
+        }
+        
+        WALLET_DIR.mkdir(exist_ok=True)
+        with open(WALLET_FILE, "w") as f:
+            json.dump(wallet_data, f, indent=2)
+        os.chmod(WALLET_FILE, 0o600)
+        
+        print(f"✅ Wallet imported: {account.address}")
+        return account.address
+    except Exception as e:
+        print(f"❌ Error: {e}")
+        return None
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "generate":
         generate_wallet()
+    elif len(sys.argv) > 1 and sys.argv[1] == "import":
+        if len(sys.argv) > 2:
+            import_wallet(sys.argv[2])
+        else:
+            print("Usage: python3 wallet.py import <private_key>")
     elif len(sys.argv) > 1 and sys.argv[1] == "balances":
         addr, _ = load_wallet()
         if addr:
@@ -94,4 +125,4 @@ if __name__ == "__main__":
             print(f"Wallet: {addr}")
             get_balances(addr)
         else:
-            print("Usage: python3 wallet.py [generate|balances]")
+            print("Usage: python3 wallet.py [generate|import <pk>|balances]")
