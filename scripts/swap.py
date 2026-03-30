@@ -73,7 +73,7 @@ def swap_for_wallet(w3, private_key, from_token, to_token, amount_str, max_tx, d
         print(f"❌ Unknown token")
         return 0, 0, 0
     
-    # Parse amount (support random like "50-100" or single "60")
+# Parse amount (support random like "50-100" or single "60")
     if '-' in amount_str:
         min_amt, max_amt = map(float, amount_str.split('-'))
         is_random = True
@@ -83,6 +83,20 @@ def swap_for_wallet(w3, private_key, from_token, to_token, amount_str, max_tx, d
     
     min_wei = w3.to_wei(str(min_amt), 'ether')
     max_wei = w3.to_wei(str(max_amt), 'ether')
+    
+    # Parse pairs - support multiple like "USDC-USDT,USDT-USDC,USDC-USDZ"
+    pairs_str = env.get('PAIRS', '')
+    if pairs_str:
+        available_pairs = [p.split('-') for p in pairs_str.split(',')]
+    else:
+        # Default pair
+        available_pairs = [[from_token, to_token]]
+    
+    # Check for RANDOM keyword
+    if from_token == 'RANDOM' or to_token == 'RANDOM':
+        use_random_pair = True
+    else:
+        use_random_pair = bool(pairs_str)
     
     token = w3.eth.contract(address=from_addr, abi=ERC20_ABI)
     balance = token.functions.balanceOf(wallet_addr).call()
@@ -116,14 +130,26 @@ def swap_for_wallet(w3, private_key, from_token, to_token, amount_str, max_tx, d
     total_gas = 0
     
     for i in range(1, max_tx + 1):
+        # Random pair if enabled
+        if use_random_pair:
+            pair = random.choice(available_pairs)
+            from_token = pair[0]
+            to_token = pair[1]
+            from_addr = TOKENS.get(from_token)
+            to_addr = TOKENS.get(to_token)
+            print(f"   🔀 Pair: {from_token} → {to_token}")
+        
         # Random amount if range specified
         if is_random:
             amount_wei = random.randint(int(min_wei), int(max_wei))
             current_amt = w3.from_wei(amount_wei, 'ether')
-            print(f"   📝 Swap #{i}/{max_tx} (random {current_amt})...")
+            print(f"   📝 Swap #{i}/{max_tx} (random {current_amt} {from_token})...")
         else:
             amount_wei = min_wei
             print(f"   📝 Swap #{i}/{max_tx}...")
+        
+        # Get token contract for from_token
+        token = w3.eth.contract(address=from_addr, abi=ERC20_ABI)
         
         balance = token.functions.balanceOf(wallet_addr).call()
         if balance < amount_wei:
