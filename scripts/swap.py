@@ -6,6 +6,7 @@ Multi-wallet auto-swap with delay and loop
 import os
 import sys
 import time
+import random
 from pathlib import Path
 from web3 import Web3
 
@@ -72,7 +73,16 @@ def swap_for_wallet(w3, private_key, from_token, to_token, amount_str, max_tx, d
         print(f"❌ Unknown token")
         return 0, 0, 0
     
-    amount_wei = w3.to_wei(amount_str, 'ether')
+    # Parse amount (support random like "50-100" or single "60")
+    if '-' in amount_str:
+        min_amt, max_amt = map(float, amount_str.split('-'))
+        is_random = True
+    else:
+        min_amt = max_amt = float(amount_str)
+        is_random = False
+    
+    min_wei = w3.to_wei(str(min_amt), 'ether')
+    max_wei = w3.to_wei(str(max_amt), 'ether')
     
     token = w3.eth.contract(address=from_addr, abi=ERC20_ABI)
     balance = token.functions.balanceOf(wallet_addr).call()
@@ -106,7 +116,14 @@ def swap_for_wallet(w3, private_key, from_token, to_token, amount_str, max_tx, d
     total_gas = 0
     
     for i in range(1, max_tx + 1):
-        print(f"   📝 Swap #{i}/{max_tx}...")
+        # Random amount if range specified
+        if is_random:
+            amount_wei = random.randint(int(min_wei), int(max_wei))
+            current_amt = w3.from_wei(amount_wei, 'ether')
+            print(f"   📝 Swap #{i}/{max_tx} (random {current_amt})...")
+        else:
+            amount_wei = min_wei
+            print(f"   📝 Swap #{i}/{max_tx}...")
         
         balance = token.functions.balanceOf(wallet_addr).call()
         if balance < amount_wei:
