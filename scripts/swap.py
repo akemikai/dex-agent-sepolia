@@ -1,9 +1,11 @@
 """
 DEX Agent — Sepolia + Stabilizer (Python)
+Auto-swap with delay and loop
 """
 
 import os
 import sys
+import time
 from pathlib import Path
 from web3 import Web3
 
@@ -26,6 +28,10 @@ env = load_env()
 PRIVATE_KEY = env.get('PRIVATE_KEY', '')
 RPC_URL = env.get('RPC_URL', 'https://sepolia.infura.io/v3/84842078b09946638c03157f83405213')
 CHAIN_ID = 11155111
+
+# Loop settings
+MAX_TX = int(env.get('MAX_TX', '1'))
+DELAY = int(env.get('DELAY', '30'))  # seconds between swaps
 
 TOKENS = {
     "USDC": Web3.to_checksum_address("0x77ef087024F87976aAdA0Aa7F73BB8EAe6E9dda1"),
@@ -59,10 +65,17 @@ STABILIZER_ROUTER_ABI = [
 def main():
     if not PRIVATE_KEY:
         print("❌ PRIVATE_KEY not set in .env")
+        print("\nCreate .env file with:")
+        print("PRIVATE_KEY=0x...")
+        print("MAX_TX=10")
+        print("DELAY=30")
         return
     
     if len(sys.argv) < 4:
         print("Usage: python3 swap.py <from_token> <to_token> <amount>")
+        print("\n.env settings:")
+        print("  MAX_TX - max swaps (default: 1)")
+        print("  DELAY  - seconds between swaps (default: 30)")
         return
     
     from_token = sys.argv[1].upper()
@@ -70,7 +83,7 @@ def main():
     amount_str = sys.argv[3]
     
     w3 = Web3(Web3.HTTPProvider(RPC_URL))
-    print(f"✅ Connected (block: {w3.eth.block_number})")
+    print(f"✅ Connected to Sepolia (block: {w3.eth.block_number})")
     
     account = w3.eth.account.from_key(PRIVATE_KEY)
     wallet_addr = Web3.to_checksum_address(account.address)
@@ -79,7 +92,7 @@ def main():
     to_addr = TOKENS.get(to_token)
     
     if not from_addr or not to_addr:
-        print(f"❌ Unknown token")
+        print(f"❌ Unknown token. Available: {list(TOKENS.keys())}")
         return
     
     amount_wei = w3.to_wei(amount_str, 'ether')
@@ -87,20 +100,26 @@ def main():
     token = w3.eth.contract(address=from_addr, abi=ERC20_ABI)
     balance = token.functions.balanceOf(wallet_addr).call()
     
-    print(f"🔄 Swap {amount_str} {from_token} → {to_token}")
-    print(f"👛 {wallet_addr[:10]}... | 💰 {w3.from_wei(balance, 'ether')} {from_token}")
+    print(f"\n🚀 Auto-Swap Starting")
+    print(f"   From: {from_token} → {to_token}")
+    print(f"   Amount: {amount_str}")
+    print(f"   Max TX: {MAX_TX}")
+    print(f"   Delay: {DELAY}s")
+    print(f"   Wallet: {wallet_addr[:12]}...")
+    print(f"   Balance: {w3.from_wei(balance, 'ether')} {from_token}")
+    print("="*50)
     
     if balance < amount_wei:
         print("❌ Insufficient balance!")
         return
     
-    # Always try to approve first
-    print("⏳ Approving...")
+    # Approve first
+    print("\n⏳ Approving...")
     try:
         nonce = w3.eth.get_transaction_count(wallet_addr)
         approve_tx = token.functions.approve(ROUTER, 2**256 - 1).build_transaction({
             'from': wallet_addr, 'nonce': nonce, 'gas': 100000,
-            'gasPrice': w3.eth.gas_price, 'chainId': CHAIN_ID
+            'gasPrice': 119571, 'chainId': CHAIN_ID
         })
         signed = w3.eth.account.sign_transaction(approve_tx, PRIVATE_KEY)
         tx_hash = w3.eth.send_raw_transaction(signed.raw_transaction)
@@ -109,31 +128,60 @@ def main():
     except Exception as e:
         print(f"⚠️ Approve error: {e}")
     
-    # Swap with minReceive = 0 (let router decide)
+    # Start loop
     router = w3.eth.contract(address=ROUTER, abi=STABILIZER_ROUTER_ABI)
+    success_count = 0
+    fail_count = 0
+    total_gas = 0
     
-    try:
-        nonce = w3.eth.get_transaction_count(wallet_addr)
-        swap_tx = router.functions.swap(from_addr, to_addr, amount_wei, 0).build_transaction({
-            'from': wallet_addr, 'nonce': nonce, 'gas': 815109,
-            'gasPrice': 119571, 'chainId': CHAIN_ID
-        })
+    for i in range(1, MAX_TX + 1):
+        print(f"\n📝 Swap #{i}/{MAX_TX}...")
         
-        print("⏳ Swapping...")
-        signed = w3.eth.account.sign_transaction(swap_tx, PRIVATE_KEY)
-        tx_hash = w3.eth.send_raw_transaction(signed.raw_transaction)
+        # Check balance
+        balance = token.functions.balanceOf(wallet_addr).call()
+        if balance < amount_wei:
+            print(f"❌ Insufficient balance! Have: {w3.from_wei(balance, 'ether')} {from_token}")
+            break
         
-        print(f"📝 https://sepolia.etherscan.io/tx/{tx_hash.hex()}")
-        
-        receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
-        
-        if receipt.status == 1:
-            print(f"✅ SUCCESS! Gas: {receipt.gasUsed}")
-        else:
-            print(f"❌ FAILED!")
+        try:
+            nonce = w3.eth.get_transaction_count(wallet_addr)
+            swap_tx = router.functions.swap(from_addr, to_addr, amount_wei, 0).build_transaction({
+                'from': wallet_addr, 'nonce': nonce, 'gas': 815109,
+                'gasPrice': 119571, 'chainId': CHAIN_ID
+            })
             
-    except Exception as e:
-        print(f"❌ Error: {e}")
+            signed = w3.eth.account.sign_transaction(swap_tx, PRIVATE_KEY)
+            tx_hash = w3.eth.send_raw_transaction(signed.raw_transaction)
+            
+            print(f"   📝 https://sepolia.etherscan.io/tx/{tx_hash.hex()}")
+            
+            receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
+            
+            if receipt.status == 1:
+                success_count += 1
+                total_gas += receipt.gasUsed
+                print(f"   ✅ Success! Gas: {receipt.gasUsed}")
+            else:
+                fail_count += 1
+                print(f"   ❌ Failed!")
+                
+        except Exception as e:
+            fail_count += 1
+            print(f"   ❌ Error: {str(e)[:50]}")
+        
+        # Delay between swaps
+        if i < MAX_TX:
+            print(f"   ⏳ Waiting {DELAY}s...")
+            time.sleep(DELAY)
+    
+    # Summary
+    print("\n" + "="*50)
+    print(f"📊 SUMMARY")
+    print(f"   ✅ Success: {success_count}")
+    print(f"   ❌ Failed:  {fail_count}")
+    print(f"   ⛽ Total gas: {total_gas}")
+    print(f"   🛑 Stopped")
+    print("="*50)
 
 if __name__ == "__main__":
     main()
