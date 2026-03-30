@@ -115,8 +115,8 @@ def main():
     try:
         nonce = w3.eth.get_transaction_count(wallet_addr)
         swap_tx = router.functions.swap(from_addr, to_addr, amount_wei, 0).build_transaction({
-            'from': wallet_addr, 'nonce': nonce, 'gas': 300000,
-            'gasPrice': w3.eth.gas_price, 'chainId': CHAIN_ID
+            'from': wallet_addr, 'nonce': nonce, 'gas': 815109,
+            'gasPrice': 119571, 'chainId': CHAIN_ID
         })
         
         print("⏳ Swapping...")
