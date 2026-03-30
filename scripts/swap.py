@@ -87,7 +87,7 @@ def swap_for_wallet(w3, private_key, from_token, to_token, amount_str, max_tx, d
     max_wei = w3.to_wei(str(max_amt), 'ether')
     
     # Parse pairs - support multiple like "USDC-USDT,USDT-USDC,USDC-USDZ"
-    pairs_str = env.get('PAIRS', '')
+    pairs_str = env.get('PAIRS', 'USDC-USDT,USDT-USDC')
     if pairs_str:
         available_pairs = [p.split('-') for p in pairs_str.split(',')]
     else:
