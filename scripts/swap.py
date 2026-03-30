@@ -102,31 +102,7 @@ def swap_for_wallet(w3, private_key, from_token, to_token, amount_str, max_tx, d
     
     # Initial amount for balance check
     initial_amount_wei = min_wei
-    
-    token = w3.eth.contract(address=from_addr, abi=ERC20_ABI)
-    balance = token.functions.balanceOf(wallet_addr).call()
-    
     print(f"\n👛 Wallet: {wallet_addr}")
-    print(f"   💰 Balance: {w3.from_wei(balance, 'ether')} {from_token}")
-    
-    if balance < initial_amount_wei:
-        print(f"   ❌ Insufficient balance!")
-        return 0, 0, 0
-    
-    # Approve
-    print(f"   ⏳ Approving...")
-    try:
-        nonce = w3.eth.get_transaction_count(wallet_addr)
-        approve_tx = token.functions.approve(ROUTER, 2**256 - 1).build_transaction({
-            'from': wallet_addr, 'nonce': nonce, 'gas': 100000,
-            'gasPrice': 119571, 'chainId': CHAIN_ID
-        })
-        signed = w3.eth.account.sign_transaction(approve_tx, private_key)
-        tx_hash = w3.eth.send_raw_transaction(signed.raw_transaction)
-        receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
-        print(f"   ✅ Approved!")
-    except Exception as e:
-        print(f"   ⚠️ Approve error: {e}")
     
     # Start loop
     router = w3.eth.contract(address=ROUTER, abi=STABILIZER_ROUTER_ABI)
@@ -156,7 +132,30 @@ def swap_for_wallet(w3, private_key, from_token, to_token, amount_str, max_tx, d
         # Get token contract for from_token
         token = w3.eth.contract(address=from_addr, abi=ERC20_ABI)
         
+        # Check balance for this token
         balance = token.functions.balanceOf(wallet_addr).call()
+        print(f"   💰 Balance: {w3.from_wei(balance, 'ether')} {from_token}")
+        
+        if balance < amount_wei:
+            print(f"   ❌ Insufficient {from_token} balance!")
+            continue  # Skip this swap, try next
+        
+        # Approve this token if needed
+        allowance = token.functions.allowance(wallet_addr, ROUTER).call()
+        if allowance < amount_wei:
+            print(f"   ⏳ Approving {from_token}...")
+            try:
+                nonce = w3.eth.get_transaction_count(wallet_addr)
+                approve_tx = token.functions.approve(ROUTER, 2**256 - 1).build_transaction({
+                    'from': wallet_addr, 'nonce': nonce, 'gas': 100000,
+                    'gasPrice': 119571, 'chainId': CHAIN_ID
+                })
+                signed = w3.eth.account.sign_transaction(approve_tx, private_key)
+                tx_hash = w3.eth.send_raw_transaction(signed.raw_transaction)
+                receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
+                print(f"   ✅ {from_token} Approved!")
+            except Exception as e:
+                print(f"   ⚠️ Approve error: {e}")
         if balance < amount_wei:
             print(f"   ❌ Insufficient balance!")
             break
