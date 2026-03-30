@@ -100,13 +100,16 @@ def swap_for_wallet(w3, private_key, from_token, to_token, amount_str, max_tx, d
     else:
         use_random_pair = bool(pairs_str)
     
+    # Initial amount for balance check
+    initial_amount_wei = min_wei
+    
     token = w3.eth.contract(address=from_addr, abi=ERC20_ABI)
     balance = token.functions.balanceOf(wallet_addr).call()
     
     print(f"\n👛 Wallet: {wallet_addr}")
     print(f"   💰 Balance: {w3.from_wei(balance, 'ether')} {from_token}")
     
-    if balance < amount_wei:
+    if balance < initial_amount_wei:
         print(f"   ❌ Insufficient balance!")
         return 0, 0, 0
     
