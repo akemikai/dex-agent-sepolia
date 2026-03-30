@@ -29,14 +29,14 @@ PRIVATE_KEY = env.get('PRIVATE_KEY', '')
 RPC_URL = env.get('RPC_URL', 'https://sepolia.infura.io/v3/84842078b09946638c03157f83405213')
 CHAIN_ID = 11155111
 
-# Tokens
+# Tokens (checksum address)
 TOKENS = {
-    "USDC": "0x77ef087024F87976aAdA0Aa7F73BB8EAe6E9dda1",
-    "USDT": "0xee0418Bd560613fbcF924C36235AB1ec301D4933",
-    "USDZ": "0x55Cc481D28Db3f1ffc9347745AA6fbB940505BdD",
+    "USDC": Web3.to_checksum_address("0x77ef087024F87976aAdA0Aa7F73BB8EAe6E9dda1"),
+    "USDT": Web3.to_checksum_address("0xee0418Bd560613fbcF924C36235AB1ec301D4933"),
+    "USDZ": Web3.to_checksum_address("0x55Cc481D28Db3f1ffc9347745AA6fbB940505BdD"),
 }
 
-ROUTER = "0xfa6419a3d3503a016df3a59f690734862ca2a78d"
+ROUTER = Web3.to_checksum_address("0xfa6419a3d3503a016df3a59f690734862ca2a78d")
 
 # ABIs
 ERC20_ABI = [
@@ -85,7 +85,7 @@ def main():
     
     # Get account
     account = w3.eth.account.from_key(PRIVATE_KEY)
-    wallet_addr = account.address
+    wallet_addr = Web3.to_checksum_address(account.address)
     
     from_addr = TOKENS.get(from_token)
     to_addr = TOKENS.get(to_token)
