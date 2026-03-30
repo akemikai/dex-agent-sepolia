@@ -165,9 +165,16 @@ def swap_for_wallet(w3, private_key, from_token, to_token, amount_str, max_tx, d
             # Retry logic
             for attempt in range(1, RETRY + 1):
                 try:
+                    # Estimate gas
+                    try:
+                        estimated_gas = router.functions.swap(from_addr, to_addr, amount_wei, 0).estimate_gas({'from': wallet_addr})
+                        gas_limit = int(estimated_gas * 1.2)  # 20% buffer
+                    except:
+                        gas_limit = 815109  # Default
+                    
                     nonce = w3.eth.get_transaction_count(wallet_addr)
                     swap_tx = router.functions.swap(from_addr, to_addr, amount_wei, 0).build_transaction({
-                        'from': wallet_addr, 'nonce': nonce, 'gas': 815109,
+                        'from': wallet_addr, 'nonce': nonce, 'gas': gas_limit,
                         'gasPrice': 119571, 'chainId': CHAIN_ID
                     })
                     
