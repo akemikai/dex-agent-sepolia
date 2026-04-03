@@ -148,7 +148,7 @@ def swap_for_wallet(w3, private_key, from_token, to_token, amount_str, max_tx, d
                 nonce = w3.eth.get_transaction_count(wallet_addr)
                 approve_tx = token.functions.approve(ROUTER, 2**256 - 1).build_transaction({
                     'from': wallet_addr, 'nonce': nonce, 'gas': 100000,
-                    'gasPrice': 119571, 'chainId': CHAIN_ID
+                    'gasPrice': w3.eth.gas_price, 'chainId': CHAIN_ID
                 })
                 signed = w3.eth.account.sign_transaction(approve_tx, private_key)
                 tx_hash = w3.eth.send_raw_transaction(signed.raw_transaction)
@@ -174,7 +174,7 @@ def swap_for_wallet(w3, private_key, from_token, to_token, amount_str, max_tx, d
                     nonce = w3.eth.get_transaction_count(wallet_addr)
                     swap_tx = router.functions.swap(from_addr, to_addr, amount_wei, 0).build_transaction({
                         'from': wallet_addr, 'nonce': nonce, 'gas': gas_limit,
-                        'gasPrice': 119571, 'chainId': CHAIN_ID
+                        'gasPrice': w3.eth.gas_price, 'chainId': CHAIN_ID
                     })
                     
                     signed = w3.eth.account.sign_transaction(swap_tx, private_key)
